@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use directories_next::ProjectDirs;
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
 #[command(version, about = "A CLI password storage utility", long_about = None)]
@@ -29,8 +30,12 @@ enum Commands {
     List,
 }
 
-fn add(
+#[derive(Serialize, Deserialize)]
+struct Entry {
+    username: String,
+    password: String,
     encrypted: bool,
+}
     username: String,
     password: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -70,8 +75,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&config_path)?;
 
     config_path.push("config.json");
-
-    let mut file: std::fs::File = std::fs::File::create(&config_path)?;
 
     // CLI Parsing
 
