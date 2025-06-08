@@ -28,12 +28,18 @@ enum Commands {
     List,
 }
 
-fn add(encrypted: bool, username: String, password: String) {
+fn add(
+    encrypted: bool,
+    username: String,
+    password: String,
+) -> Result<(), Box<dyn std::error::Error>> {
     if encrypted {
         println!("Adding encrypted entry:\n{}: {}", username, password);
     } else {
         println!("Adding plaintext entry:\n{}: {}", username, password);
     }
+
+    Ok(())
 }
 
 fn rm(username: String) {
@@ -48,7 +54,7 @@ fn list() {
     println!("Listing all passwords");
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = Args::parse();
 
     match args.command {
@@ -63,8 +69,17 @@ fn main() {
                 add(false, username, password)
             }
         }
-        Commands::Rm { username } => rm(username),
-        Commands::Show { username } => show(username),
-        Commands::List => list(),
+        Commands::Rm { username } => {
+            rm(username);
+            Ok(())
+        }
+        Commands::Show { username } => {
+            show(username);
+            Ok(())
+        }
+        Commands::List => {
+            list();
+            Ok(())
+        }
     }
 }
