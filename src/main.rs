@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use directories_next::ProjectDirs;
 
 #[derive(Parser)]
 #[command(version, about = "A CLI password storage utility", long_about = None)]
@@ -55,6 +56,25 @@ fn list() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Config directory initialisation
+
+    let project_dirs: ProjectDirs =
+        match ProjectDirs::from("com", "mattpatchava", "password-manager") {
+            Some(dirs) => dirs,
+            None => panic!("Could not determine a valid directory for config storage"),
+        };
+
+    let config_dir: &std::path::Path = project_dirs.config_dir();
+    let mut config_path: std::path::PathBuf = std::path::PathBuf::from(config_dir);
+
+    std::fs::create_dir_all(&config_path)?;
+
+    config_path.push("config.json");
+
+    let mut file: std::fs::File = std::fs::File::create(&config_path)?;
+
+    // CLI Parsing
+
     let args: Args = Args::parse();
 
     match args.command {
