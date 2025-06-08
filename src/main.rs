@@ -36,13 +36,39 @@ struct Entry {
     password: String,
     encrypted: bool,
 }
+
+fn add(
     username: String,
     password: String,
+    encrypted: bool,
+    file_path: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if encrypted {
         println!("Adding encrypted entry:\n{}: {}", username, password);
     } else {
         println!("Adding plaintext entry:\n{}: {}", username, password);
+
+        let mut store: std::collections::HashMap<String, Entry> =
+            match std::fs::File::open(file_path) {
+                Ok(file) => serde_json::from_reader(file)?,
+                Err(_) => std::collections::HashMap::new(),
+            };
+
+        if store.contains_key(&username) {
+            return Err("Username already exists".into());
+        }
+
+        store.insert(
+            username.clone(),
+            Entry {
+                username,
+                password,
+                encrypted,
+            },
+        );
+
+        let file: std::fs::File = std::fs::File::create(file_path)?;
+        serde_json::to_writer_pretty(file, &store)?;
     }
 
     Ok(())
@@ -85,13 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             encrypted,
             username,
             password,
-        } => {
-            if encrypted {
-                add(true, username, password)
-            } else {
-                add(false, username, password)
-            }
-        }
+        } => add(username, password, encrypted, &config_path),
         Commands::Rm { username } => {
             rm(username);
             Ok(())
