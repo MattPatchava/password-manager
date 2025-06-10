@@ -46,8 +46,6 @@ fn add(
     if encrypted {
         println!("Adding encrypted entry:\n{}: {}", username, password);
     } else {
-        println!("Adding plaintext entry:\n{}: {}", username, password);
-
         let mut store: std::collections::HashMap<String, Entry> =
             match std::fs::File::open(file_path) {
                 Ok(file) => serde_json::from_reader(file)?,
@@ -58,10 +56,12 @@ fn add(
             return Err("Username already exists".into());
         }
 
+        let username_clone: String = username.clone();
+
         store.insert(
-            username.clone(),
+            username_clone.clone(),
             Entry {
-                username,
+                username: username_clone,
                 password,
                 encrypted,
             },
@@ -70,6 +70,8 @@ fn add(
         let file: std::fs::File = std::fs::File::create(file_path)?;
         serde_json::to_writer_pretty(file, &store)?;
     }
+
+    println!("New entry added: {}", username);
 
     Ok(())
 }
