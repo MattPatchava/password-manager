@@ -99,8 +99,24 @@ fn rm(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::
     Ok(())
 }
 
-fn show(username: String) {
-    println!("Showing password for: {}", username);
+fn show(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let store: std::collections::HashMap<String, Entry> = match std::fs::File::open(file_path) {
+        Ok(file) => serde_json::from_reader(file)?,
+        Err(_) => std::collections::HashMap::new(),
+    };
+
+    let username_lower = username.to_lowercase();
+
+    let entry: Option<(&String, &Entry)> = store
+        .iter()
+        .find(|(k, _)| k.to_lowercase() == username_lower);
+
+    match entry {
+        Some((key, value)) => println!("{}: {}", key, value.password),
+        None => println!("No entry found for username: {}", username),
+    }
+
+    Ok(())
 }
 
 fn list() {
@@ -134,5 +150,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             password,
         } => add(username, password, encrypted, &config_path),
         Commands::Rm { username } => rm(username, &config_path),
+        Commands::Show { username } => show(username, &config_path),
     }
 }
