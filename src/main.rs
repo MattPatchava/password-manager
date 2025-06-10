@@ -119,8 +119,28 @@ fn show(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std
     Ok(())
 }
 
-fn list() {
-    println!("Listing all passwords");
+fn list(file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let store: std::collections::HashMap<String, Entry> = match std::fs::File::open(file_path) {
+        Ok(file) => serde_json::from_reader(file)?,
+        Err(_) => std::collections::HashMap::new(),
+    };
+
+    if store.is_empty() {
+        println!("No entries found.");
+    } else {
+        println!(
+            "
+======================
+    Saved Entries
+======================\n"
+        );
+        for username in store.keys() {
+            println!("{}", username);
+        }
+        println!("\n=====================\n\nTo view a password, use the `show` command.");
+    }
+
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -151,5 +171,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => add(username, password, encrypted, &config_path),
         Commands::Rm { username } => rm(username, &config_path),
         Commands::Show { username } => show(username, &config_path),
+        Commands::List => list(&config_path),
     }
 }
