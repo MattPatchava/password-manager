@@ -75,21 +75,26 @@ fn add(
 }
 
 fn rm(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Removing entry: {}", username);
-
     let mut store: std::collections::HashMap<String, Entry> = match std::fs::File::open(file_path) {
         Ok(file) => serde_json::from_reader(file)?,
         Err(_) => std::collections::HashMap::new(),
     };
 
-    if !store.contains_key(&username) {
-        return Err("Username not found".into());
+    let key: Option<String> = store
+        .keys()
+        .find(|k| k.to_lowercase() == username.to_lowercase())
+        .cloned();
+
+    match key {
+        Some(k) => {
+            store.remove(&k);
+            let file: std::fs::File = std::fs::File::create(file_path)?;
+            serde_json::to_writer_pretty(file, &store)?;
+        }
+        None => return Err("Username not found".into()),
     }
 
-    store.remove(&username);
-
-    let file: std::fs::File = std::fs::File::create(file_path)?;
-    serde_json::to_writer_pretty(file, &store)?;
+    println!("Removed entry for: {}", username);
 
     Ok(())
 }
