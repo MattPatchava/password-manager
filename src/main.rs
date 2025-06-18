@@ -1,6 +1,10 @@
+use base64::{engine::general_purpose, Engine};
 use clap::{Parser, Subcommand};
 use directories_next::ProjectDirs;
+use rand::rngs::OsRng;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 
 #[derive(Parser)]
 #[command(version, about = "A CLI password storage utility", long_about = None)]
@@ -31,10 +35,64 @@ enum Commands {
 }
 
 #[derive(Serialize, Deserialize)]
+struct Store {
+    meta: Meta,
+    entries: std::collections::HashMap<String, Entry>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Meta {
+    salt: String,
+}
+
+#[derive(Serialize, Deserialize)]
 struct Entry {
     username: String,
     password: String,
     encrypted: bool,
+}
+
+fn load_store(file_path: &std::path::Path) -> Result<Store, Box<dyn std::error::Error>> {
+    let store: Store = match std::fs::File::open(file_path) {
+        Ok(file) => serde_json::from_reader(file)?,
+        Err(_) => init_new_store()?,
+    };
+
+    Ok(store)
+}
+
+fn init_new_store() -> Result<Store, Box<dyn std::error::Error>> {
+    let master_password: String = prompt_for_password()?;
+
+    let salt: String = generate_salt();
+
+    let store: Store = Store {
+        meta: { Meta { salt } },
+        entries: std::collections::HashMap::new(),
+    };
+
+    Ok(store)
+}
+
+fn generate_salt() -> String {
+    let mut salt = [0u8; 32];
+    let mut rng: OsRng = OsRng::default();
+
+    rng.fill_bytes(&mut salt);
+
+    general_purpose::STANDARD.encode(salt)
+}
+
+fn prompt_for_password() -> Result<String, Box<dyn std::error::Error>> {
+    print!("Set new password: ");
+
+    std::io::stdout().flush()?;
+
+    let mut master_password: String = String::new();
+
+    std::io::stdin().read_line(&mut master_password)?;
+
+    Ok(master_password.trim().to_string())
 }
 
 fn add(
@@ -43,22 +101,27 @@ fn add(
     encrypted: bool,
     file_path: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let mut store: Store = load_store(&file_path)?;
+    if store.entries.contains_key(&username) {
+        return Err("Username already exists".into());
+    }
+    let username_clone: String = username.clone();
+
     if encrypted {
         println!("Adding encrypted entry:\n{}: {}", username, password);
+        let master_password: String = prompt_for_password()?;
+        let salt_bytes = general_purpose::STANDARD.decode(&store.meta.salt)?;
+        let mut encryption_key: [u8; 32] = [0u8; 32];
+
+        let argon2 = argon2::Argon2::default();
+
+        argon2.hash_password_into(
+            &master_password.as_bytes(),
+            &salt_bytes,
+            &mut encryption_key,
+        );
     } else {
-        let mut store: std::collections::HashMap<String, Entry> =
-            match std::fs::File::open(file_path) {
-                Ok(file) => serde_json::from_reader(file)?,
-                Err(_) => std::collections::HashMap::new(),
-            };
-
-        if store.contains_key(&username) {
-            return Err("Username already exists".into());
-        }
-
-        let username_clone: String = username.clone();
-
-        store.insert(
+        store.entries.insert(
             username_clone.clone(),
             Entry {
                 username: username_clone,
@@ -77,20 +140,18 @@ fn add(
 }
 
 fn rm(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let mut store: std::collections::HashMap<String, Entry> = match std::fs::File::open(file_path) {
-        Ok(file) => serde_json::from_reader(file)?,
-        Err(_) => std::collections::HashMap::new(),
-    };
+    let mut store: Store = load_store(&file_path)?;
 
     let key: Option<String> = store
+        .entries
         .keys()
         .find(|k| k.to_lowercase() == username.to_lowercase())
         .cloned();
 
     match key {
         Some(k) => {
-            store.remove(&k);
-            let file: std::fs::File = std::fs::File::create(file_path)?;
+            store.entries.remove(&k);
+            let file: std::fs::File = std::fs::File::create(&file_path)?;
             serde_json::to_writer_pretty(file, &store)?;
         }
         None => return Err("Username not found".into()),
@@ -102,14 +163,12 @@ fn rm(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::
 }
 
 fn show(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let store: std::collections::HashMap<String, Entry> = match std::fs::File::open(file_path) {
-        Ok(file) => serde_json::from_reader(file)?,
-        Err(_) => std::collections::HashMap::new(),
-    };
+    let store: Store = load_store(&file_path)?;
 
     let username_lower = username.to_lowercase();
 
     let entry: Option<(&String, &Entry)> = store
+        .entries
         .iter()
         .find(|(k, _)| k.to_lowercase() == username_lower);
 
@@ -122,12 +181,9 @@ fn show(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std
 }
 
 fn list(file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let store: std::collections::HashMap<String, Entry> = match std::fs::File::open(file_path) {
-        Ok(file) => serde_json::from_reader(file)?,
-        Err(_) => std::collections::HashMap::new(),
-    };
+    let store: Store = load_store(file_path)?;
 
-    if store.is_empty() {
+    if store.entries.is_empty() {
         println!("No entries found.");
     } else {
         println!(
@@ -136,7 +192,7 @@ fn list(file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     Saved Entries
 ======================\n"
         );
-        for username in store.keys() {
+        for username in store.entries.keys() {
             println!("{}", username);
         }
         println!("\n=====================\n\nTo view a password, use the `show` command.");
