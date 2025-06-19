@@ -51,6 +51,7 @@ struct Entry {
     username: String,
     password: String,
     encrypted: bool,
+    salt: Option<String>,
 }
 
 fn load_store(file_path: &std::path::Path) -> Result<Store> {
@@ -61,8 +62,6 @@ fn load_store(file_path: &std::path::Path) -> Result<Store> {
 
     Ok(store)
 }
-
-    let master_password: String = prompt_for_password()?;
 
 fn init_new_store() -> Result<Store> {
     let salt: String = generate_salt();
@@ -123,6 +122,29 @@ fn add(
                 &mut encryption_key,
             )
             .map_err(|e| anyhow!(e))?;
+
+        let mut password_salt_bytes: [u8; 32] = [0u8; 32];
+        let mut rng: OsRng = rand::rngs::OsRng::default();
+        rng.fill_bytes(&mut password_salt_bytes);
+
+        let mut encrypted_password: [u8; 32] = [0u8; 32];
+
+        argon2
+            .hash_password_into(
+                &encryption_key,
+                &password_salt_bytes,
+                &mut encrypted_password,
+            )
+            .map_err(|e| anyhow!(e))?;
+
+        store.entries.insert(
+            username_clone.clone(),
+            Entry {
+                username: username_clone,
+                password: general_purpose::STANDARD.encode(encrypted_password),
+                salt: Some(general_purpose::STANDARD.encode(password_salt_bytes)),
+                encrypted: true,
+            },
         );
     } else {
         store.entries.insert(
