@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine};
 use clap::{Parser, Subcommand};
 use directories_next::ProjectDirs;
@@ -52,7 +53,7 @@ struct Entry {
     encrypted: bool,
 }
 
-fn load_store(file_path: &std::path::Path) -> Result<Store, Box<dyn std::error::Error>> {
+fn load_store(file_path: &std::path::Path) -> Result<Store> {
     let store: Store = match std::fs::File::open(file_path) {
         Ok(file) => serde_json::from_reader(file)?,
         Err(_) => init_new_store()?,
@@ -61,9 +62,9 @@ fn load_store(file_path: &std::path::Path) -> Result<Store, Box<dyn std::error::
     Ok(store)
 }
 
-fn init_new_store() -> Result<Store, Box<dyn std::error::Error>> {
     let master_password: String = prompt_for_password()?;
 
+fn init_new_store() -> Result<Store> {
     let salt: String = generate_salt();
 
     let store: Store = Store {
@@ -83,7 +84,7 @@ fn generate_salt() -> String {
     general_purpose::STANDARD.encode(salt)
 }
 
-fn prompt_for_password() -> Result<String, Box<dyn std::error::Error>> {
+fn prompt_for_password() -> Result<String> {
     print!("Set new password: ");
 
     std::io::stdout().flush()?;
@@ -100,10 +101,10 @@ fn add(
     password: String,
     encrypted: bool,
     file_path: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
     let mut store: Store = load_store(&file_path)?;
     if store.entries.contains_key(&username) {
-        return Err("Username already exists".into());
+        return Err(anyhow::anyhow!("Username already exists"));
     }
     let username_clone: String = username.clone();
 
@@ -115,10 +116,13 @@ fn add(
 
         let argon2 = argon2::Argon2::default();
 
-        argon2.hash_password_into(
-            &master_password.as_bytes(),
-            &salt_bytes,
-            &mut encryption_key,
+        argon2
+            .hash_password_into(
+                &master_password.as_bytes(),
+                &salt_bytes,
+                &mut encryption_key,
+            )
+            .map_err(|e| anyhow!(e))?;
         );
     } else {
         store.entries.insert(
@@ -127,19 +131,20 @@ fn add(
                 username: username_clone,
                 password,
                 encrypted,
+                salt: None,
             },
         );
-
-        let file: std::fs::File = std::fs::File::create(file_path)?;
-        serde_json::to_writer_pretty(file, &store)?;
     }
+
+    let file: std::fs::File = std::fs::File::create(file_path)?;
+    serde_json::to_writer_pretty(file, &store)?;
 
     println!("New entry added: {}", username);
 
     Ok(())
 }
 
-fn rm(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn rm(username: String, file_path: &std::path::Path) -> Result<()> {
     let mut store: Store = load_store(&file_path)?;
 
     let key: Option<String> = store
@@ -154,7 +159,7 @@ fn rm(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::
             let file: std::fs::File = std::fs::File::create(&file_path)?;
             serde_json::to_writer_pretty(file, &store)?;
         }
-        None => return Err("Username not found".into()),
+        None => return Err(anyhow!("Username not found")),
     }
 
     println!("Removed entry for: {}", username);
@@ -162,7 +167,7 @@ fn rm(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::
     Ok(())
 }
 
-fn show(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn show(username: String, file_path: &std::path::Path) -> Result<()> {
     let store: Store = load_store(&file_path)?;
 
     let username_lower = username.to_lowercase();
@@ -180,7 +185,7 @@ fn show(username: String, file_path: &std::path::Path) -> Result<(), Box<dyn std
     Ok(())
 }
 
-fn list(file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn list(file_path: &std::path::Path) -> Result<()> {
     let store: Store = load_store(file_path)?;
 
     if store.entries.is_empty() {
@@ -201,7 +206,7 @@ fn list(file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     // Config directory initialisation
 
     let project_dirs: ProjectDirs =
