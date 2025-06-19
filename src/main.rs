@@ -1,3 +1,5 @@
+use aes_gcm::aead::{generic_array::GenericArray, Aead, KeyInit};
+use aes_gcm::Aes256Gcm;
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine};
 use clap::{Parser, Subcommand};
@@ -6,6 +8,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+use typenum;
 
 #[derive(Parser)]
 #[command(version, about = "A CLI password storage utility", long_about = None)]
@@ -51,6 +54,7 @@ struct Entry {
     username: String,
     password: String,
     encrypted: bool,
+    nonce: Option<String>,
 }
 
 fn load_store(file_path: &std::path::Path) -> Result<Store> {
@@ -61,8 +65,6 @@ fn load_store(file_path: &std::path::Path) -> Result<Store> {
 
     Ok(store)
 }
-
-    let master_password: String = prompt_for_password()?;
 
 fn init_new_store() -> Result<Store> {
     let salt: String = generate_salt();
@@ -112,7 +114,7 @@ fn add(
         println!("Adding encrypted entry:\n{}: {}", username, password);
         let master_password: String = prompt_for_password()?;
         let salt_bytes = general_purpose::STANDARD.decode(&store.meta.salt)?;
-        let mut encryption_key: [u8; 32] = [0u8; 32];
+        let mut aes_encryption_key: [u8; 32] = [0u8; 32];
 
         let argon2 = argon2::Argon2::default();
 
@@ -120,9 +122,31 @@ fn add(
             .hash_password_into(
                 &master_password.as_bytes(),
                 &salt_bytes,
-                &mut encryption_key,
+                &mut aes_encryption_key,
             )
             .map_err(|e| anyhow!(e))?;
+
+        let cipher: Aes256Gcm =
+            Aes256Gcm::new_from_slice(&aes_encryption_key).map_err(|e| anyhow!(e))?;
+
+        let mut nonce_bytes: [u8; 12] = [0u8; 12];
+        let mut rng: OsRng = rand::rngs::OsRng::default();
+        rng.fill_bytes(&mut nonce_bytes);
+
+        let nonce: &GenericArray<u8, typenum::U12> = GenericArray::from_slice(&nonce_bytes);
+
+        let ciphertext: Vec<u8> = cipher
+            .encrypt(nonce, password.as_bytes())
+            .map_err(|e| anyhow!(e))?;
+
+        store.entries.insert(
+            username_clone.clone(),
+            Entry {
+                username: username_clone,
+                password: general_purpose::STANDARD.encode(ciphertext),
+                encrypted,
+                nonce: Some(general_purpose::STANDARD.encode(nonce)),
+            },
         );
     } else {
         store.entries.insert(
@@ -131,7 +155,7 @@ fn add(
                 username: username_clone,
                 password,
                 encrypted,
-                salt: None,
+                nonce: None,
             },
         );
     }
