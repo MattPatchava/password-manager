@@ -6,9 +6,16 @@ use clap::{Parser, Subcommand};
 use directories_next::ProjectDirs;
 use rand::rngs::OsRng;
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
-use std::io::Write;
 use typenum;
+
+mod hashing;
+use hashing::password::hash_password;
+mod io;
+use io::prompt_for_password;
+mod store;
+use store::load_store;
+mod models;
+use models::{Entry, Store};
 
 #[derive(Parser)]
 #[command(version, about = "A CLI password storage utility", long_about = None)]
@@ -38,66 +45,6 @@ enum Commands {
     List,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Store {
-    meta: Meta,
-    entries: std::collections::HashMap<String, Entry>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Meta {
-    salt: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Entry {
-    username: String,
-    password: String,
-    encrypted: bool,
-    nonce: Option<String>,
-}
-
-fn load_store(file_path: &std::path::Path) -> Result<Store> {
-    let store: Store = match std::fs::File::open(file_path) {
-        Ok(file) => serde_json::from_reader(file)?,
-        Err(_) => init_new_store()?,
-    };
-
-    Ok(store)
-}
-
-fn init_new_store() -> Result<Store> {
-    let salt: String = generate_salt();
-
-    let store: Store = Store {
-        meta: { Meta { salt } },
-        entries: std::collections::HashMap::new(),
-    };
-
-    Ok(store)
-}
-
-fn generate_salt() -> String {
-    let mut salt = [0u8; 32];
-    let mut rng: OsRng = OsRng::default();
-
-    rng.fill_bytes(&mut salt);
-
-    general_purpose::STANDARD.encode(salt)
-}
-
-fn prompt_for_password() -> Result<String> {
-    print!("Set new password: ");
-
-    std::io::stdout().flush()?;
-
-    let mut master_password: String = String::new();
-
-    std::io::stdin().read_line(&mut master_password)?;
-
-    Ok(master_password.trim().to_string())
-}
-
 fn add(
     username: String,
     password: String,
@@ -112,19 +59,11 @@ fn add(
 
     if encrypted {
         println!("Adding encrypted entry:\n{}: {}", username, password);
+
         let master_password: String = prompt_for_password()?;
-        let salt_bytes = general_purpose::STANDARD.decode(&store.meta.salt)?;
-        let mut aes_encryption_key: [u8; 32] = [0u8; 32];
+        let salt_bytes: Vec<u8> = general_purpose::STANDARD.decode(&store.meta.salt)?;
 
-        let argon2 = argon2::Argon2::default();
-
-        argon2
-            .hash_password_into(
-                &master_password.as_bytes(),
-                &salt_bytes,
-                &mut aes_encryption_key,
-            )
-            .map_err(|e| anyhow!(e))?;
+        let aes_encryption_key: [u8; 32] = hash_password(&master_password, salt_bytes)?;
 
         let cipher: Aes256Gcm =
             Aes256Gcm::new_from_slice(&aes_encryption_key).map_err(|e| anyhow!(e))?;
