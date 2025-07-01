@@ -20,4 +20,17 @@ pub fn encrypt_password(cipher: Aes256Gcm, plaintext: &str) -> Result<(Vec<u8>, 
 
     Ok((ciphertext, nonce_bytes))
 }
+
+pub fn decrypt_password(cipher: &Aes256Gcm, nonce: &str, ciphertext: &str) -> Result<String> {
+    let nonce_bytes = general_purpose::STANDARD.decode(nonce)?;
+    let nonce: &GenericArray<u8, typenum::U12> = GenericArray::from_slice(&nonce_bytes);
+    let ciphertext: Vec<u8> = general_purpose::STANDARD.decode(ciphertext)?;
+
+    let plaintext: Vec<u8> = cipher
+        .decrypt(nonce, ciphertext.as_slice())
+        .map_err(|e| anyhow!(e))?;
+
+    let plaintext_str: String = String::from_utf8(plaintext)?;
+
+    Ok(plaintext_str)
 }
