@@ -1,7 +1,7 @@
-use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose, Engine};
-use rand::rngs::OsRng;
+use anyhow::{Result, anyhow};
+use base64::{Engine, engine::general_purpose};
 use rand::RngCore;
+use rand::rngs::OsRng;
 
 pub fn generate_salt() -> String {
     let mut salt = [0u8; 32];

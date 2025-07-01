@@ -1,12 +1,8 @@
-use aes_gcm::aead::{generic_array::GenericArray, Aead, KeyInit};
-use aes_gcm::Aes256Gcm;
+use aes_gcm::{aead::KeyInit, Aes256Gcm};
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine};
 use clap::{Parser, Subcommand};
 use directories_next::ProjectDirs;
-use rand::rngs::OsRng;
-use rand::RngCore;
-use typenum;
 
 mod hashing;
 use hashing::password::hash_password;
@@ -16,6 +12,8 @@ mod store;
 use store::load_store;
 mod models;
 use models::{Entry, Store};
+mod crypto;
+use crypto::encrypt_password;
 
 #[derive(Parser)]
 #[command(version, about = "A CLI password storage utility", long_about = None)]
@@ -27,7 +25,7 @@ struct Args {
 #[derive(Subcommand)]
 enum Commands {
     Add {
-        #[arg(short, long)]
+        #[arg(short, long, default_value_t = true)]
         encrypted: bool,
         #[arg(short, long)]
         username: String,
@@ -68,15 +66,7 @@ fn add(
         let cipher: Aes256Gcm =
             Aes256Gcm::new_from_slice(&aes_encryption_key).map_err(|e| anyhow!(e))?;
 
-        let mut nonce_bytes: [u8; 12] = [0u8; 12];
-        let mut rng: OsRng = rand::rngs::OsRng::default();
-        rng.fill_bytes(&mut nonce_bytes);
-
-        let nonce: &GenericArray<u8, typenum::U12> = GenericArray::from_slice(&nonce_bytes);
-
-        let ciphertext: Vec<u8> = cipher
-            .encrypt(nonce, password.as_bytes())
-            .map_err(|e| anyhow!(e))?;
+        let (ciphertext, nonce): (String, String) = encrypt_password(cipher, &password)?;
 
         store.entries.insert(
             username_clone.clone(),
