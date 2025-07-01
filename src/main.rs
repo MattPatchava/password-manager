@@ -13,7 +13,7 @@ use store::load_store;
 mod models;
 use models::{Entry, Store};
 mod crypto;
-use crypto::encrypt_password;
+use crypto::password::{decrypt_password, encrypt_password};
 
 #[derive(Parser)]
 #[command(version, about = "A CLI password storage utility", long_about = None)]
@@ -130,7 +130,31 @@ fn show(username: String, file_path: &std::path::Path) -> Result<()> {
         .find(|(k, _)| k.to_lowercase() == username_lower);
 
     match entry {
-        Some((key, value)) => println!("{}: {}", key, value.password),
+        Some((key, value)) => {
+            if value.encrypted {
+                let master_password: String = prompt_for_password()?;
+                let salt_bytes: Vec<u8> = general_purpose::STANDARD.decode(&store.meta.salt)?;
+                let aes_encryption_key: [u8; 32] = hash_password(&master_password, salt_bytes)?;
+
+                let cipher: Aes256Gcm =
+                    Aes256Gcm::new_from_slice(&aes_encryption_key).map_err(|e| anyhow!(e))?;
+
+                let nonce_b64: &str = value.nonce.as_ref().ok_or(anyhow!("Missing nonce"))?;
+
+                let decrypted: String = decrypt_password(&cipher, nonce_b64, &value.password)?;
+
+                println!(
+                    "
+======================
+Username: {}
+Password: {}
+======================\n",
+                    key, decrypted
+                );
+            } else {
+                println!("{}: {}", key, value.password);
+            }
+        }
         None => println!("No entry found for username: {}", username),
     }
 
