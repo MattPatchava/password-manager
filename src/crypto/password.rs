@@ -7,7 +7,7 @@ use base64::engine::{general_purpose, Engine};
 use rand::{rngs::OsRng, RngCore};
 use typenum;
 
-pub fn encrypt_password(cipher: Aes256Gcm, plaintext: &str) -> Result<(String, String)> {
+pub fn encrypt_password(cipher: Aes256Gcm, plaintext: &str) -> Result<(Vec<u8>, [u8; 12])> {
     let mut nonce_bytes: [u8; 12] = [0u8; 12];
     let mut rng: OsRng = OsRng::default();
     rng.fill_bytes(&mut nonce_bytes);
@@ -18,8 +18,6 @@ pub fn encrypt_password(cipher: Aes256Gcm, plaintext: &str) -> Result<(String, S
         .encrypt(&nonce, plaintext.as_bytes())
         .map_err(|e| anyhow!(e))?;
 
-    Ok((
-        general_purpose::STANDARD.encode(ciphertext),
-        general_purpose::STANDARD.encode(nonce),
-    ))
+    Ok((ciphertext, nonce_bytes))
+}
 }

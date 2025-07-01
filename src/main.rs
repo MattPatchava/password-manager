@@ -60,13 +60,12 @@ fn add(
 
         let master_password: String = prompt_for_password()?;
         let salt_bytes: Vec<u8> = general_purpose::STANDARD.decode(&store.meta.salt)?;
-
         let aes_encryption_key: [u8; 32] = hash_password(&master_password, salt_bytes)?;
 
         let cipher: Aes256Gcm =
             Aes256Gcm::new_from_slice(&aes_encryption_key).map_err(|e| anyhow!(e))?;
 
-        let (ciphertext, nonce): (String, String) = encrypt_password(cipher, &password)?;
+        let (ciphertext, nonce): (Vec<u8>, [u8; 12]) = encrypt_password(cipher, &password)?;
 
         store.entries.insert(
             username_clone.clone(),
