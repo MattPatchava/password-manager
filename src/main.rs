@@ -185,11 +185,10 @@ fn list(file_path: &std::path::Path) -> Result<()> {
 fn main() -> Result<()> {
     // Config directory initialisation
 
-    let project_dirs: ProjectDirs =
-        match ProjectDirs::from("com", "mattpatchava", "password-manager") {
-            Some(dirs) => dirs,
-            None => panic!("Could not determine a valid directory for config storage"),
-        };
+    let project_dirs: ProjectDirs = match ProjectDirs::from("com", "mattpatchava", "pwstore") {
+        Some(dirs) => dirs,
+        None => panic!("Could not determine a valid directory for config storage"),
+    };
 
     let config_dir: &std::path::Path = project_dirs.config_dir();
     let mut config_path: std::path::PathBuf = std::path::PathBuf::from(config_dir);
